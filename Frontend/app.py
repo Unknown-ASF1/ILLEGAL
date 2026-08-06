@@ -13,7 +13,7 @@ if "history" not in st.session_state:
 API_URL = "https://wars-tree-citation-mere.trycloudflare.com"
 
 st.set_page_config(
-    page_title="PIET Vision",
+    page_title="Illegas AS Fuck",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -76,12 +76,12 @@ html, body, [class*="css"]{
 # ==============================
 
 st.markdown(
-    "<div class='title'>🎓 PIET Vision</div>",
+    "<div class='title'>🎓 Illegas AS Fuck</div>",
     unsafe_allow_html=True
 )
 
 st.markdown(
-    "<div class='subtitle'>AI Powered Student Recognition</div>",
+    "<div class='subtitle'>Illegal As Fuck</div>",
     unsafe_allow_html=True
 )
 
@@ -190,7 +190,7 @@ if recognize and image:
 
     with st.sidebar:
 
-        st.title("PIET Vision")
+        st.title("Illegal As Fuck")
 
         st.success("Backend Connected")
 
