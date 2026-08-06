@@ -10,7 +10,7 @@ if "history" not in st.session_state:
 # CONFIG
 # ==============================
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "https://wars-tree-citation-mere.trycloudflare.com"
 
 st.set_page_config(
     page_title="PIET Vision",
