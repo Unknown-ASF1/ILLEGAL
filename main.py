@@ -7,8 +7,17 @@ import numpy as np
 from Backend.face_engine import get_faces
 from Backend.recognizer import recognize
 from Backend.database import get_student
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Student Recognition API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Allow Streamlit to communicate with FastAPI
 app.add_middleware(
