@@ -1,267 +1,503 @@
-# Frontend/app.py
 import streamlit as st
-from api import recognize, search_students, get_total_students
+import requests
+from PIL import Image
+import io
+
+# ==========================================================
+# CONFIG
+# ==========================================================
 
 st.set_page_config(
-    page_title="Illegal As Fuck | Student Recognition",
+    page_title="Student Recognition System",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
+
+API_URL = "http://127.0.0.1:8000"
 
 if "history" not in st.session_state:
     st.session_state.history = []
 
+# ==========================================================
+# CUSTOM CSS
+# ==========================================================
+
 st.markdown("""
 <style>
-html, body, [class*="css"] {
-    background-color: #0f172a;
-    color: #e2e8f0;
+
+html, body, [class*="css"]{
+    background:#0f172a;
+    color:white;
 }
-.main { background-color: #0f172a; }
-.block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-h1, h2, h3, h4 { color: #f8fafc !important; }
-.stButton > button {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-weight: 600;
+
+.main{
+    background:#0f172a;
 }
-.stButton > button:hover {
-    background: linear-gradient(135deg, #2563eb, #1e40af);
+
+.block-container{
+    padding-top:2rem;
+    padding-bottom:2rem;
 }
-.big-title {
-    font-size: 2.6rem;
-    font-weight: 800;
-    text-align: center;
-    background: linear-gradient(90deg, #60a5fa, #a78bfa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+
+h1,h2,h3,h4{
+    color:white;
 }
-.subtitle {
-    text-align: center;
-    color: #94a3b8;
-    font-size: 1.05rem;
-    margin-bottom: 1.5rem;
+
+.card{
+    background:#1e293b;
+    padding:20px;
+    border-radius:18px;
+    border:1px solid #334155;
 }
+
+.result-card{
+    background:#1e293b;
+    padding:25px;
+    border-radius:18px;
+    border:1px solid #334155;
+}
+
+.metric-box{
+    background:#1e293b;
+    padding:15px;
+    border-radius:12px;
+    text-align:center;
+}
+
+footer{
+    visibility:hidden;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="big-title">🎓 Illegal As Fuck</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="subtitle">Face Recognition • Smart Search</div>',
-    unsafe_allow_html=True,
-)
+# ==========================================================
+# HEADER
+# ==========================================================
+
+st.title("🎓 Student Recognition System")
+st.caption("Face Recognition + Student Database Search")
+
 st.divider()
+
+# ==========================================================
+# LAYOUT
+# ==========================================================
+
+search_col, recognize_col, result_col = st.columns(
+    [1.2, 1.2, 1.4]
+)
+
+# ==========================================================
+# SEARCH PANEL
+# ==========================================================
+
+with search_col:
+
+    st.subheader("🔍 Search Student")
+
+    search_field = st.selectbox(
+        "Search By",
+        [
+            "Roll No",
+            "Name",
+            "Course",
+            "Semester",
+            "Stream",
+            "Section"
+        ]
+    )
+
+    search_value = st.text_input(
+        "Enter Value"
+    )
+
+    search_button = st.button(
+        "Search Database",
+        use_container_width=True
+    )
+
+# ==========================================================
+# FACE RECOGNITION PANEL
+# ==========================================================
+
+with recognize_col:
+
+    st.subheader("📷 Face Recognition")
+
+    uploaded_image = st.file_uploader(
+        "Upload Student Image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    captured_image = st.camera_input(
+        "Or Capture Image"
+    )
+
+    image_file = None
+
+    if uploaded_image is not None:
+        image_file = uploaded_image
+        st.image(uploaded_image, use_container_width=True)
+
+    elif captured_image is not None:
+        image_file = captured_image
+        st.image(captured_image, use_container_width=True)
+
+    recognize_button = st.button(
+        "Recognize Student",
+        use_container_width=True
+    )
+
+# ==========================================================
+# RESULT PANEL
+# ==========================================================
+
+with result_col:
+
+    st.subheader("👤 Result")
+
+    result_placeholder = st.empty()
+
+
+# ==========================================================
+# SEARCH API
+# ==========================================================
+
+if search_button:
+
+    if search_value.strip() == "":
+
+        with result_placeholder.container():
+            st.warning("Please enter a value to search.")
+
+    else:
+
+        payload = {
+            "field": search_field,
+            "value": search_value
+        }
+
+        try:
+
+            response = requests.post(
+                f"{API_URL}/search",
+                json=payload,
+                timeout=30
+            )
+
+            data = response.json()
+
+            with result_placeholder.container():
+
+                if not data.get("found"):
+
+                    st.error(
+                        data.get(
+                            "message",
+                            "No student found."
+                        )
+                    )
+
+                else:
+
+                    # --------------------------------------
+                    # Roll Number returns single student
+                    # --------------------------------------
+
+                    if search_field == "Roll No":
+
+                        student = data["student"]
+
+                        st.success("Student Found")
+
+                        st.image(
+                            student["photo"],
+                            width=180
+                        )
+
+                        st.markdown(
+                            f"## {student['name']}"
+                        )
+
+                        st.write(
+                            f"**Roll No:** {student['roll']}"
+                        )
+
+                        st.write(
+                            f"**Course:** {student['course']}"
+                        )
+
+                        st.write(
+                            f"**Semester:** {student['semester']}"
+                        )
+
+                        st.write(
+                            f"**Stream:** {student['stream']}"
+                        )
+
+                        st.write(
+                            f"**Section:** {student['section']}"
+                        )
+
+                        st.session_state.history.insert(
+                            0,
+                            {
+                                "type": "Search",
+                                "name": student["name"],
+                                "roll": student["roll"]
+                            }
+                        )
+
+                    # --------------------------------------
+                    # Other fields return multiple students
+                    # --------------------------------------
+
+                    else:
+
+                        st.success(
+                            f"{data['count']} student(s) found."
+                        )
+
+                        for student in data["students"]:
+
+                            with st.container(border=True):
+
+                                c1, c2 = st.columns(
+                                    [1, 3]
+                                )
+
+                                with c1:
+
+                                    st.image(
+                                        student["photo"],
+                                        width=100
+                                    )
+
+                                with c2:
+
+                                    st.markdown(
+                                        f"### {student['name']}"
+                                    )
+
+                                    st.write(
+                                        f"**Roll:** {student['roll']}"
+                                    )
+
+                                    st.write(
+                                        f"**Course:** {student['course']}"
+                                    )
+
+                                    st.write(
+                                        f"Semester: {student['semester']}"
+                                    )
+
+                                    st.write(
+                                        f"Stream: {student['stream']}"
+                                    )
+
+                                    st.write(
+                                        f"Section: {student['section']}"
+                                    )
+
+        except Exception as e:
+
+            with result_placeholder.container():
+
+                st.error(
+                    f"Unable to connect to backend.\n\n{e}"
+                )
+
+# ==========================================================
+# FACE RECOGNITION API
+# ==========================================================
+
+if recognize_button:
+
+    if image_file is None:
+
+        with result_placeholder.container():
+            st.warning("Please upload or capture an image.")
+
+    else:
+
+        try:
+
+            with st.spinner("Recognizing student..."):
+
+                files = {
+                    "file": (
+                        "student.jpg",
+                        image_file.getvalue(),
+                        "image/jpeg"
+                    )
+                }
+
+                response = requests.post(
+                    f"{API_URL}/recognize",
+                    files=files,
+                    timeout=60
+                )
+
+                data = response.json()
+
+            with result_placeholder.container():
+
+                if not data.get("matched"):
+
+                    st.error(
+                        data.get(
+                            "message",
+                            "Student not found."
+                        )
+                    )
+
+                else:
+
+                    student = data["student"]
+
+                    confidence = data["confidence"]
+
+                    st.success("Student Recognized")
+
+                    st.image(
+                        student["photo"],
+                        width=220
+                    )
+
+                    st.markdown(
+                        f"## {student['name']}"
+                    )
+
+                    st.write(
+                        f"**Roll No:** {student['roll']}"
+                    )
+
+                    st.write(
+                        f"**Course:** {student['course']}"
+                    )
+
+                    st.write(
+                        f"**Semester:** {student['semester']}"
+                    )
+
+                    st.write(
+                        f"**Stream:** {student['stream']}"
+                    )
+
+                    st.write(
+                        f"**Section:** {student['section']}"
+                    )
+
+                    st.progress(
+                        min(confidence, 1.0)
+                    )
+
+                    st.write(
+                        f"Recognition Confidence: {confidence * 100:.2f}%"
+                    )
+
+                    st.session_state.history.insert(
+                        0,
+                        {
+                            "type": "Recognition",
+                            "name": student["name"],
+                            "roll": student["roll"],
+                            "confidence": confidence
+                        }
+                    )
+
+        except Exception as e:
+
+            with result_placeholder.container():
+
+                st.error(
+                    f"Recognition failed.\n\n{e}"
+                )
 
 # ==========================================================
 # SIDEBAR
 # ==========================================================
+
 with st.sidebar:
-    st.title("🎓 System")
 
-    try:
-        total = get_total_students()
-        st.success("✅ Backend Online")
-        st.caption("Connected via Cloudflare Tunnel")
-    except Exception:
-        total = 0
-        st.error("❌ Backend Offline")
-        st.caption("Check your laptop + Cloudflare tunnel")
+    st.title("🎓 Student Recognition")
 
-    st.metric("Total Students", total if total else "—")
-    st.metric("Engine", "InsightFace")
-    st.metric("Mode", "Cloudflare Tunnel")
+    st.success("Backend Connected")
+
+    st.divider()
+
+    st.subheader("System Status")
+
+    st.metric(
+        "Recognition Engine",
+        "InsightFace"
+    )
+
+    st.metric(
+        "API Status",
+        "Online"
+    )
+
+    st.metric(
+        "Search Mode",
+        "Database"
+    )
+
     st.divider()
 
     st.subheader("Recent Activity")
-    if not st.session_state.history:
+
+    if len(st.session_state.history) == 0:
+
         st.info("No activity yet.")
+
     else:
-        for item in st.session_state.history[:12]:
+
+        for item in st.session_state.history[:10]:
+
             if item["type"] == "Recognition":
+
                 st.markdown(
-                    f"**👤 {item['name']}**  \n"
-                    f"Roll: `{item['roll']}`  \n"
-                    f"Conf: {item['confidence']*100:.1f}%"
+                    f"""
+**🟢 Recognition**
+
+**{item['name']}**
+
+Roll No: {item['roll']}
+
+Confidence: {item['confidence'] * 100:.2f}%
+"""
                 )
-            elif item["type"] == "Search":
+
+            else:
+
                 st.markdown(
-                    f"**🔍 {item['name']}**  \n"
-                    f"Roll: `{item['roll']}`  \n"
-                    f"Score: {item['score']}"
+                    f"""
+**🔍 Search**
+
+**{item['name']}**
+
+Roll No: {item['roll']}
+"""
                 )
-            st.caption("---")
+
+            st.divider()
 
 # ==========================================================
-# TABS
+# FOOTER
 # ==========================================================
-tab_search, tab_upload = st.tabs(
-    ["🔍 Smart Search", "📷 Upload / Camera"]
-)
-
-# ==========================================================
-# TAB 1 – SMART SEARCH
-# ==========================================================
-with tab_search:
-    st.subheader("Weighted Student Search")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        roll = st.text_input("Roll Number", key="s_roll")
-        name = st.text_input("Student Name", key="s_name")
-    with col2:
-        course = st.text_input("Course", key="s_course")
-        semester = st.text_input("Semester", key="s_sem")
-    with col3:
-        stream = st.text_input("Stream", key="s_stream")
-        section = st.text_input("Section", key="s_sec")
-
-    if st.button("Search Students", use_container_width=True, type="primary"):
-        filters = {
-            "roll": roll,
-            "name": name,
-            "course": course,
-            "semester": semester,
-            "stream": stream,
-            "section": section,
-        }
-
-        with st.spinner("Searching..."):
-            try:
-                matches = search_students(filters)
-            except Exception as e:
-                st.error(f"Backend error: {e}")
-                matches = []
-
-        # Normalize response
-        if isinstance(matches, dict):
-            matches = matches.get("results", matches.get("data", matches.get("students", [])))
-
-        if not isinstance(matches, list):
-            st.error("Unexpected response from Backend")
-            matches = []
-
-        if not matches:
-            st.warning("No students found matching the criteria.")
-        else:
-            st.success(f"Found {len(matches)} matching student(s)")
-
-            for student in matches:
-                if not isinstance(student, dict):
-                    st.write(student)
-                    continue
-
-                score = student.get("score", 0)
-                if score >= 180:
-                    badge = "🟢 Excellent"
-                elif score >= 120:
-                    badge = "🟡 Good"
-                else:
-                    badge = "🟠 Possible"
-
-                with st.container(border=True):
-                    c1, c2 = st.columns([1, 2.5])
-                    with c1:
-                        if student.get("photo"):
-                            st.image(student["photo"], width=140)
-                        else:
-                            st.info("No photo")
-                    with c2:
-                        st.markdown(f"### {student.get('name', 'Unknown')}")
-                        st.write(f"**Roll:** {student.get('roll', '')}")
-                        st.write(f"**Course:** {student.get('course', '')} | **Sem:** {student.get('semester', '')}")
-                        st.write(f"**Stream:** {student.get('stream', '')} | **Sec:** {student.get('section', '')}")
-                        st.metric("Search Score", score)
-                        st.caption(badge)
-
-                st.session_state.history.insert(0, {
-                    "type": "Search",
-                    "name": student.get("name", ""),
-                    "roll": student.get("roll", ""),
-                    "score": score,
-                })
-
-            st.session_state.history = st.session_state.history[:20]
-
-# ==========================================================
-# TAB 2 – UPLOAD / CAMERA
-# ==========================================================
-with tab_upload:
-    st.subheader("Recognize from Image")
-
-    uploaded = st.file_uploader("Upload student photo", type=["jpg", "jpeg", "png"])
-    camera = st.camera_input("Or take a photo")
-
-    image_bytes = None
-    if uploaded:
-        image_bytes = uploaded.getvalue()
-        st.image(uploaded, use_container_width=True)
-    elif camera:
-        image_bytes = camera.getvalue()
-        st.image(camera, use_container_width=True)
-
-    if st.button("Recognize Student", use_container_width=True, type="primary"):
-        if image_bytes is None:
-            st.warning("Please upload or capture an image first.")
-        else:
-            with st.spinner("Recognizing via Backend..."):
-                try:
-                    result = recognize(image_bytes)
-
-                    if isinstance(result, list):
-                        results = result
-                    elif isinstance(result, dict):
-                        results = result.get("results", result.get("data", [result]))
-                    else:
-                        results = []
-
-                    if not results:
-                        st.error("No face detected.")
-                    else:
-                        best = max(results, key=lambda r: r.get("confidence", 0) if isinstance(r, dict) else 0)
-
-                        if not isinstance(best, dict) or not best.get("matched", False):
-                            conf = best.get("confidence", 0) if isinstance(best, dict) else 0
-                            st.error(f"Unknown person (confidence: {conf*100:.1f}%)")
-                        else:
-                            st.success("Student Recognized")
-                            c1, c2 = st.columns([1, 2])
-                            with c1:
-                                if best.get("photo"):
-                                    st.image(best["photo"], width=200)
-                            with c2:
-                                st.markdown(f"## {best.get('name', '')}")
-                                st.write(f"**Roll:** {best.get('roll', '')}")
-                                st.write(f"**Course:** {best.get('course', '')}")
-                                st.write(f"**Semester:** {best.get('semester', '')}")
-                                st.write(f"**Stream:** {best.get('stream', '')}")
-                                st.write(f"**Section:** {best.get('section', '')}")
-
-                            conf = best.get("confidence", 0)
-                            st.progress(min(float(conf), 1.0))
-                            st.metric("Confidence", f"{conf*100:.2f}%")
-
-                            if conf >= 0.90:
-                                st.success("Very High Confidence")
-                            elif conf >= 0.75:
-                                st.info("High Confidence")
-                            elif conf >= 0.60:
-                                st.warning("Moderate Confidence")
-                            else:
-                                st.error("Low Confidence")
-
-                            st.session_state.history.insert(0, {
-                                "type": "Recognition",
-                                "name": best.get("name", ""),
-                                "roll": best.get("roll", ""),
-                                "confidence": conf,
-                            })
-                            st.session_state.history = st.session_state.history[:20]
-
-                except Exception as e:
-                    st.error(f"Backend error: {e}")
 
 st.divider()
-st.caption("Frontend: Streamlit Cloud  |  Backend: Your Laptop via Cloudflare Tunnel")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.caption("Frontend: Streamlit")
+
+with col2:
+    st.caption("Backend: FastAPI")
+
+with col3:
+    st.caption("Recognition: InsightFace")

@@ -2,7 +2,6 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-
 import cv2
 import numpy as np
 
@@ -10,9 +9,9 @@ from Backend.face_engine import get_faces
 from Backend.recognizer import recognize
 from Backend.database import (
     get_student,
-    search_best_matches,
+    search_student,
+    search_students
 )
-from Backend.live_recognition import recognize_frame
 
 # ==========================================================
 # APP
@@ -39,13 +38,8 @@ app.add_middleware(
 # ==========================================================
 
 class SearchRequest(BaseModel):
-
-    roll: str = ""
-    name: str = ""
-    course: str = ""
-    semester: str = ""
-    stream: str = ""
-    section: str = ""
+    field: str
+    value: str
 
 # ==========================================================
 # HOME
@@ -101,12 +95,14 @@ async def recognize_student(
         face = max(
             faces,
             key=lambda x:
-            (x.bbox[2] - x.bbox[0]) *
-            (x.bbox[3] - x.bbox[1])
+            (x.bbox[2]-x.bbox[0]) *
+            (x.bbox[3]-x.bbox[1])
         )
 
+        embedding = face.embedding
+
         student_index, confidence = recognize(
-            face.embedding
+            embedding
         )
 
         if student_index is None:
@@ -116,7 +112,9 @@ async def recognize_student(
                 "message": "Student Not Found"
             }
 
-        student = get_student(student_index)
+        student = get_student(
+            student_index
+        )
 
         return {
 
@@ -142,119 +140,68 @@ async def recognize_student(
         }
 
 # ==========================================================
-# LIVE RECOGNITION
-# ==========================================================
-
-@app.post("/recognize-live")
-async def recognize_live(
-    file: UploadFile = File(...)
-):
-
-    try:
-
-        contents = await file.read()
-
-        image = np.frombuffer(
-            contents,
-            np.uint8
-        )
-
-        image = cv2.imdecode(
-            image,
-            cv2.IMREAD_COLOR
-        )
-
-        if image is None:
-
-            return {
-                "success": False,
-                "message": "Invalid Image",
-                "faces": []
-            }
-
-        faces = recognize_frame(image)
-
-        return {
-            "success": True,
-            "count": len(faces),
-            "faces": faces
-        }
-
-    except Exception as e:
-
-        return {
-            "success": False,
-            "message": str(e),
-            "faces": []
-        }
-
-# ==========================================================
-# MULTI-FIELD SEARCH
+# SEARCH STUDENT
 # ==========================================================
 
 @app.post("/search")
-def search_students(request: SearchRequest):
+def search(request: SearchRequest):
 
     try:
 
-        filters = {
-            "roll": request.roll,
-            "name": request.name,
-            "course": request.course,
-            "semester": request.semester,
-            "stream": request.stream,
-            "section": request.section,
-        }
+        field = request.field
 
-        # Check if every field is empty
+        value = request.value
 
-        if not any(
-            str(value).strip()
-            for value in filters.values()
-        ):
+        # Roll Number should return exactly one student
 
-            return {
-                "found": False,
-                "count": 0,
-                "message": "Please enter at least one search field.",
-                "students": []
-            }
+        if field == "Roll No":
 
-        students = search_best_matches(filters)
+            student = search_student(
+                field,
+                value
+            )
 
-        if len(students) == 0:
+            if student is None:
+
+                return {
+
+                    "found": False,
+
+                    "message": "Student Not Found"
+
+                }
 
             return {
-                "found": False,
-                "count": 0,
-                "message": "No matching students found.",
-                "students": []
+
+                "found": True,
+
+                "student": student
+
             }
+
+        # Other fields may have multiple students
+
+        students = search_students(
+            field,
+            value
+        )
 
         return {
-            "found": True,
+
+            "found": len(students) > 0,
+
             "count": len(students),
+
             "students": students
+
         }
 
     except Exception as e:
 
         return {
+
             "found": False,
-            "count": 0,
-            "message": str(e),
-            "students": []
+
+            "message": str(e)
+
         }
-
-
-# ==========================================================
-# HEALTH CHECK
-# ==========================================================
-
-@app.get("/health")
-def health():
-
-    return {
-        "status": "online",
-        "service": "Student Recognition API"
-    }
