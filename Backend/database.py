@@ -54,7 +54,7 @@ def get_student(index: int) -> Dict:
         "semester": row["Semester"],
         "stream": row["Stream"],
         "section": row["Section"],
-        "photo": row["Photo"],
+        "photo": "" if pd.isna(row["Photo"]) else str(row["Photo"]),
     }
 
 
@@ -192,17 +192,17 @@ def search_best_matches(
             continue
 
         results.append(
-            {
-                "score": score,
-                "name": row["Student Name"],
-                "roll": row["Roll No."],
-                "course": row["Course"],
-                "semester": row["Semester"],
-                "stream": row["Stream"],
-                "section": row["Section"],
-                "photo": row["Photo"],
-            }
-        )
+        {
+        "score": int(score),
+        "name": "" if pd.isna(row["Student Name"]) else str(row["Student Name"]),
+        "roll": "" if pd.isna(row["Roll No."]) else str(row["Roll No."]),
+        "course": "" if pd.isna(row["Course"]) else str(row["Course"]),
+        "semester": "" if pd.isna(row["Semester"]) else str(row["Semester"]),
+        "stream": "" if pd.isna(row["Stream"]) else str(row["Stream"]),
+        "section": "" if pd.isna(row["Section"]) else str(row["Section"]),
+        "photo": "" if pd.isna(row["Photo"]) else str(row["Photo"]),
+        }
+    )
 
     results.sort(
         key=lambda x: (
