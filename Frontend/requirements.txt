@@ -4,3 +4,5 @@ numpy
 pandas
 pillow
 requests
+insightface
+onnxruntime
