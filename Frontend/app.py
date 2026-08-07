@@ -5,7 +5,7 @@ import requests
 # CONFIG
 # ==========================================================
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "https://crossword-balance-bottom-aids.trycloudflare.com"
 
 st.set_page_config(
     page_title="Student Recognition System",
