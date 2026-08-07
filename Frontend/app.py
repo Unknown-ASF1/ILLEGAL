@@ -5,7 +5,7 @@ import requests
 # CONFIG
 # ==========================================================
 
-API_URL = "https://crossword-balance-bottom-aids.trycloudflare.com"
+API_URL = "https://florence-leasing-correspondence-mental.trycloudflare.com"
 
 st.set_page_config(
     page_title="Student Recognition System",
