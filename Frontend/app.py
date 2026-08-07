@@ -14,9 +14,9 @@ import av
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from Backend.live_recognition import process_frame, recognize_frame, draw_results
-from Backend.database import search_best_matches, get_student, total_students
-from live_camera import FaceRecognitionProcessor
+from Backend.live_recognition import  recognize_frame #draw_results process_frame,
+from Backend.database import search_best_matches,  total_students #get_student
+# from live_camera import FaceRecognitionProcessor
 
 # ==========================================================
 # PAGE CONFIG
