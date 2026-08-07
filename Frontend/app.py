@@ -1,15 +1,10 @@
 # Frontend/app.py
 import streamlit as st
-import cv2
 import numpy as np
-import sys
-from pathlib import Path
+from PIL import Image
+import io
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from Backend.live_recognition import recognize_frame
-from Backend.database import search_best_matches, total_students
+from api import recognize, search_students, get_total_students
 
 st.set_page_config(
     page_title="Illegal As Fuck | Student Recognition",
@@ -64,29 +59,24 @@ st.markdown(
 )
 st.divider()
 
+# ==========================================================
+# SIDEBAR
+# ==========================================================
 with st.sidebar:
     st.title("🎓 System")
 
     try:
-        total = total_students()
-        from Backend.recognizer import EMBEDDINGS
-        embeddings_count = len(EMBEDDINGS)
-        backend_ok = True
+        total = get_total_students()
+        st.success("✅ Backend Online")
+        st.caption("Connected via Cloudflare Tunnel")
     except Exception:
         total = 0
-        embeddings_count = 0
-        backend_ok = False
+        st.error("❌ Backend Offline")
+        st.caption("Check your laptop + Cloudflare tunnel")
 
-    if backend_ok and embeddings_count > 0:
-        st.success("✅ Backend Online")
-        st.caption(f"Embeddings loaded: {embeddings_count}")
-    else:
-        st.error("❌ Backend Offline / Error")
-        st.caption("Check Backend folder & embeddings.pkl")
-
-    st.metric("Total Students", total if backend_ok else "—")
+    st.metric("Total Students", total if total else "—")
     st.metric("Engine", "InsightFace")
-    st.metric("Mode", "Local")
+    st.metric("Mode", "Cloudflare Tunnel")
     st.divider()
 
     st.subheader("Recent Activity")
@@ -108,6 +98,9 @@ with st.sidebar:
                 )
             st.caption("---")
 
+# ==========================================================
+# TABS
+# ==========================================================
 tab_search, tab_upload = st.tabs(
     ["🔍 Smart Search", "📷 Upload / Camera"]
 )
@@ -140,7 +133,11 @@ with tab_search:
         }
 
         with st.spinner("Searching..."):
-            matches = search_best_matches(filters, limit=25)
+            try:
+                matches = search_students(filters)
+            except Exception as e:
+                st.error(f"Backend error: {e}")
+                matches = []
 
         if not matches:
             st.warning("No students found matching the criteria.")
@@ -148,7 +145,7 @@ with tab_search:
             st.success(f"Found {len(matches)} matching student(s)")
 
             for student in matches:
-                score = student["score"]
+                score = student.get("score", 0)
                 if score >= 180:
                     badge = "🟢 Excellent"
                 elif score >= 120:
@@ -164,24 +161,24 @@ with tab_search:
                         else:
                             st.info("No photo")
                     with c2:
-                        st.markdown(f"### {student['name']}")
-                        st.write(f"**Roll:** {student['roll']}")
-                        st.write(f"**Course:** {student['course']} | **Sem:** {student['semester']}")
-                        st.write(f"**Stream:** {student['stream']} | **Sec:** {student['section']}")
+                        st.markdown(f"### {student.get('name', 'Unknown')}")
+                        st.write(f"**Roll:** {student.get('roll', '')}")
+                        st.write(f"**Course:** {student.get('course', '')} | **Sem:** {student.get('semester', '')}")
+                        st.write(f"**Stream:** {student.get('stream', '')} | **Sec:** {student.get('section', '')}")
                         st.metric("Search Score", score)
                         st.caption(badge)
 
                 st.session_state.history.insert(0, {
                     "type": "Search",
-                    "name": student["name"],
-                    "roll": student["roll"],
+                    "name": student.get("name", ""),
+                    "roll": student.get("roll", ""),
                     "score": score,
                 })
 
             st.session_state.history = st.session_state.history[:20]
 
 # ==========================================================
-# TAB 2 – UPLOAD / SINGLE PHOTO
+# TAB 2 – UPLOAD / CAMERA
 # ==========================================================
 with tab_upload:
     st.subheader("Recognize from Image")
@@ -201,22 +198,25 @@ with tab_upload:
         if image_bytes is None:
             st.warning("Please upload or capture an image first.")
         else:
-            with st.spinner("Recognizing..."):
-                nparr = np.frombuffer(image_bytes, np.uint8)
-                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            with st.spinner("Recognizing via Backend..."):
+                try:
+                    result = recognize(image_bytes)
 
-                if img is None:
-                    st.error("Could not decode image.")
-                else:
-                    results = recognize_frame(img)
+                    # Handle different possible response formats
+                    if isinstance(result, list):
+                        results = result
+                    elif isinstance(result, dict) and "results" in result:
+                        results = result["results"]
+                    else:
+                        results = [result]
 
                     if not results:
                         st.error("No face detected.")
                     else:
-                        best = max(results, key=lambda r: r["confidence"])
+                        best = max(results, key=lambda r: r.get("confidence", 0))
 
-                        if not best["matched"]:
-                            st.error(f"Unknown person (confidence: {best['confidence']*100:.1f}%)")
+                        if not best.get("matched", False):
+                            st.error(f"Unknown person (confidence: {best.get('confidence', 0)*100:.1f}%)")
                         else:
                             st.success("Student Recognized")
                             c1, c2 = st.columns([1, 2])
@@ -224,14 +224,14 @@ with tab_upload:
                                 if best.get("photo"):
                                     st.image(best["photo"], width=200)
                             with c2:
-                                st.markdown(f"## {best['name']}")
-                                st.write(f"**Roll:** {best['roll']}")
-                                st.write(f"**Course:** {best['course']}")
-                                st.write(f"**Semester:** {best['semester']}")
-                                st.write(f"**Stream:** {best['stream']}")
-                                st.write(f"**Section:** {best['section']}")
+                                st.markdown(f"## {best.get('name', '')}")
+                                st.write(f"**Roll:** {best.get('roll', '')}")
+                                st.write(f"**Course:** {best.get('course', '')}")
+                                st.write(f"**Semester:** {best.get('semester', '')}")
+                                st.write(f"**Stream:** {best.get('stream', '')}")
+                                st.write(f"**Section:** {best.get('section', '')}")
 
-                            conf = best["confidence"]
+                            conf = best.get("confidence", 0)
                             st.progress(min(conf, 1.0))
                             st.metric("Confidence", f"{conf*100:.2f}%")
 
@@ -246,11 +246,14 @@ with tab_upload:
 
                             st.session_state.history.insert(0, {
                                 "type": "Recognition",
-                                "name": best["name"],
-                                "roll": best["roll"],
+                                "name": best.get("name", ""),
+                                "roll": best.get("roll", ""),
                                 "confidence": conf,
                             })
                             st.session_state.history = st.session_state.history[:20]
 
+                except Exception as e:
+                    st.error(f"Backend error: {e}")
+
 st.divider()
-st.caption("Frontend: Streamlit  |  Backend: InsightFace")
+st.caption("Frontend: Streamlit Cloud  |  Backend: Your Laptop via Cloudflare Tunnel")
