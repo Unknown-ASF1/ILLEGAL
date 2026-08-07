@@ -283,58 +283,58 @@ with tab_upload:
                             })
                             st.session_state.history = st.session_state.history[:20]
 
-# ==========================================================
-# TAB 3 – LIVE CAMERA
-# ==========================================================
-with tab_live:
-    st.subheader("Live Face Recognition")
-    st.caption("Green = known student • Red = unknown • Shows Name + Stream + Semester")
+# # ==========================================================
+# # TAB 3 – LIVE CAMERA
+# # ==========================================================
+# with tab_live:
+#     st.subheader("Live Face Recognition")
+#     st.caption("Green = known student • Red = unknown • Shows Name + Stream + Semester")
 
-    rtc_config = RTCConfiguration(
-        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
+#     rtc_config = RTCConfiguration(
+#         {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+#     )
 
-    ctx = webrtc_streamer(
-        key="live-recognition",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration=rtc_config,
-        video_processor_factory=FaceRecognitionProcessor,
-        media_stream_constraints={
-            "video": {
-                "width": {"ideal": 640},
-                "height": {"ideal": 480},
-                "frameRate": {"ideal": 24}
-            },
-            "audio": False
-        },
-        async_processing=True,
-    )
+#     ctx = webrtc_streamer(
+#         key="live-recognition",
+#         mode=WebRtcMode.SENDRECV,
+#         rtc_configuration=rtc_config,
+#         video_processor_factory=FaceRecognitionProcessor,
+#         media_stream_constraints={
+#             "video": {
+#                 "width": {"ideal": 640},
+#                 "height": {"ideal": 480},
+#                 "frameRate": {"ideal": 24}
+#             },
+#             "audio": False
+#         },
+#         async_processing=True,
+#     )
 
-    if ctx.video_processor:
-        results = ctx.video_processor.latest_results
+#     if ctx.video_processor:
+#         results = ctx.video_processor.latest_results
 
-        if results:
-            st.markdown("### Current Detections")
-            for r in results:
-                if r["matched"]:
-                    semester = r.get("semester", "")
-                    st.success(
-                        f"**{r['name']}**  \n"
-                        f"{r.get('stream', '')}  |  Sem {semester}  \n"
-                        f"Confidence: {r['confidence']*100:.1f}%"
-                    )
-                    if r["confidence"] > 0.70:
-                        st.session_state.history.insert(0, {
-                            "type": "Live",
-                            "name": r["name"],
-                            "roll": r.get("roll", ""),
-                            "confidence": r["confidence"],
-                        })
-                        st.session_state.history = st.session_state.history[:20]
-                else:
-                    st.error(f"Unknown  |  Conf: {r['confidence']*100:.1f}%")
-        else:
-            st.info("Point the camera at a face…")
+#         if results:
+#             st.markdown("### Current Detections")
+#             for r in results:
+#                 if r["matched"]:
+#                     semester = r.get("semester", "")
+#                     st.success(
+#                         f"**{r['name']}**  \n"
+#                         f"{r.get('stream', '')}  |  Sem {semester}  \n"
+#                         f"Confidence: {r['confidence']*100:.1f}%"
+#                     )
+#                     if r["confidence"] > 0.70:
+#                         st.session_state.history.insert(0, {
+#                             "type": "Live",
+#                             "name": r["name"],
+#                             "roll": r.get("roll", ""),
+#                             "confidence": r["confidence"],
+#                         })
+#                         st.session_state.history = st.session_state.history[:20]
+#                 else:
+#                     st.error(f"Unknown  |  Conf: {r['confidence']*100:.1f}%")
+#         else:
+#             st.info("Point the camera at a face…")
 
 # ==========================================================
 # FOOTER
