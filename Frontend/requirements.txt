@@ -1,10 +1,8 @@
-fastapi
-uvicorn
-insightface
-onnxruntime
+streamlit
+streamlit-webrtc
+av
 opencv-python-headless
 numpy
 pandas
-requests
-python-multipart
 pillow
+requests

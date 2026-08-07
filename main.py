@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+
 import cv2
 import numpy as np
 
@@ -11,6 +12,7 @@ from Backend.database import (
     get_student,
     search_best_matches,
 )
+from Backend.live_recognition import recognize_frame
 
 # ==========================================================
 # APP
@@ -137,6 +139,53 @@ async def recognize_student(
 
             "message": str(e)
 
+        }
+
+# ==========================================================
+# LIVE RECOGNITION
+# ==========================================================
+
+@app.post("/recognize-live")
+async def recognize_live(
+    file: UploadFile = File(...)
+):
+
+    try:
+
+        contents = await file.read()
+
+        image = np.frombuffer(
+            contents,
+            np.uint8
+        )
+
+        image = cv2.imdecode(
+            image,
+            cv2.IMREAD_COLOR
+        )
+
+        if image is None:
+
+            return {
+                "success": False,
+                "message": "Invalid Image",
+                "faces": []
+            }
+
+        faces = recognize_frame(image)
+
+        return {
+            "success": True,
+            "count": len(faces),
+            "faces": faces
+        }
+
+    except Exception as e:
+
+        return {
+            "success": False,
+            "message": str(e),
+            "faces": []
         }
 
 # ==========================================================

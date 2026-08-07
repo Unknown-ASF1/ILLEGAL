@@ -1,594 +1,315 @@
+# Frontend/app.py
 import streamlit as st
-import requests
+import cv2
+import numpy as np
+import sys
+from pathlib import Path
+from typing import Dict, List
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+import av
+
+# ----------------------------------------------------------
+# PATH SETUP (critical)
+# ----------------------------------------------------------
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from Backend.live_recognition import process_frame, recognize_frame, draw_results
+from Backend.database import search_best_matches, get_student, total_students
+from live_camera import FaceRecognitionProcessor   # same folder
 
 # ==========================================================
-# CONFIG
+# PAGE CONFIG
 # ==========================================================
-
-API_URL = "https://florence-leasing-correspondence-mental.trycloudflare.com"
-
 st.set_page_config(
-    page_title="Illegal As Fuck",
+    page_title="Illegal As Fuck | Student Recognition",
     page_icon="🎓",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # ==========================================================
 # SESSION STATE
 # ==========================================================
-
 if "history" not in st.session_state:
     st.session_state.history = []
 
 # ==========================================================
-# CSS
+# CUSTOM CSS
 # ==========================================================
-
 st.markdown("""
 <style>
-
-html, body, [class*="css"]{
-    background:#0f172a;
-    color:white;
+html, body, [class*="css"] {
+    background-color: #0f172a;
+    color: #e2e8f0;
 }
-
-.main{
-    background:#0f172a;
+.main { background-color: #0f172a; }
+.block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+h1, h2, h3, h4 { color: #f8fafc !important; }
+.stButton > button {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
 }
-
-.block-container{
-    padding-top:2rem;
+.stButton > button:hover {
+    background: linear-gradient(135deg, #2563eb, #1e40af);
 }
-
-.card{
-    background:#1e293b;
-    border-radius:15px;
-    padding:20px;
-    border:1px solid #334155;
-    margin-bottom:20px;
+.big-title {
+    font-size: 2.6rem;
+    font-weight: 800;
+    text-align: center;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
-
-.result-card{
-    background:#111827;
-    border-radius:12px;
-    padding:15px;
-    margin-bottom:15px;
-    border:1px solid #334155;
+.subtitle {
+    text-align: center;
+    color: #94a3b8;
+    font-size: 1.05rem;
+    margin-bottom: 1.5rem;
 }
-
-.small-text{
-    color:#94a3b8;
-    font-size:14px;
-}
-
-.big-title{
-    font-size:42px;
-    font-weight:bold;
-    text-align:center;
-    color:white;
-}
-
-.subtitle{
-    text-align:center;
-    color:#94a3b8;
-    margin-bottom:30px;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================================
-# TITLE
+# HEADER
 # ==========================================================
-
+st.markdown('<div class="big-title">🎓 Illegal As Fuck</div>', unsafe_allow_html=True)
 st.markdown(
-    "<div class='big-title'>🎓 Illegal As Fuck</div>",
-    unsafe_allow_html=True
+    '<div class="subtitle">Face Recognition • Smart Search • Live Camera</div>',
+    unsafe_allow_html=True,
 )
-
-st.markdown(
-    "<div class='subtitle'>Face Recognition + Smart Student Search</div>",
-    unsafe_allow_html=True
-)
-
 st.divider()
-
-# ==========================================================
-# MAIN LAYOUT
-# ==========================================================
-
-left, middle, right = st.columns([1.2,1.2,1.6])
-
-# ==========================================================
-# SEARCH PANEL
-# ==========================================================
-
-with left:
-
-    st.subheader("🔍 Smart Search")
-
-    roll = st.text_input(
-        "Roll Number"
-    )
-
-    name = st.text_input(
-        "Student Name"
-    )
-
-    course = st.text_input(
-        "Course"
-    )
-
-    semester = st.text_input(
-        "Semester"
-    )
-
-    stream = st.text_input(
-        "Stream"
-    )
-
-    section = st.text_input(
-        "Section"
-    )
-
-    search_button = st.button(
-        "Search Students",
-        use_container_width=True
-    )
-
-# ==========================================================
-# FACE RECOGNITION PANEL
-# ==========================================================
-
-with middle:
-
-    st.subheader("📷 Face Recognition")
-
-    uploaded = st.file_uploader(
-        "Upload Student Image",
-        type=["jpg","jpeg","png"]
-    )
-
-    camera = st.camera_input(
-        "Take Photo"
-    )
-
-    image = None
-
-    if uploaded:
-
-        image = uploaded
-        st.image(
-            uploaded,
-            use_container_width=True
-        )
-
-    elif camera:
-
-        image = camera
-
-        st.image(
-            camera,
-            use_container_width=True
-        )
-
-    recognize_button = st.button(
-        "Recognize Student",
-        use_container_width=True
-    )
-
-# ==========================================================
-# RESULT PANEL
-# ==========================================================
-
-with right:
-
-    st.subheader("📋 Results")
-
-    result_placeholder = st.empty()
-
-# ==========================================================
-# SMART SEARCH
-# ==========================================================
-
-if search_button:
-
-    payload = {
-        "roll": roll,
-        "name": name,
-        "course": course,
-        "semester": semester,
-        "stream": stream,
-        "section": section,
-    }
-
-    try:
-
-        with st.spinner("Searching students..."):
-
-            response = requests.post(
-                f"{API_URL}/search",
-                json=payload,
-                timeout=30
-            )
-
-        data = response.json()
-
-        with result_placeholder.container():
-
-            if not data["found"]:
-
-                st.error(
-                    data.get(
-                        "message",
-                        "No students found."
-                    )
-                )
-
-            else:
-
-                st.success(
-                    f"{data['count']} matching student(s) found"
-                )
-
-                for student in data["students"]:
-
-                    score = student["score"]
-
-                    if score >= 180:
-                        color = "🟢"
-                        label = "Excellent Match"
-
-                    elif score >= 120:
-                        color = "🟡"
-                        label = "Good Match"
-
-                    else:
-                        color = "🟠"
-                        label = "Possible Match"
-
-                    with st.container(border=True):
-
-                        c1, c2 = st.columns(
-                            [1, 2]
-                        )
-
-                        with c1:
-
-                            st.image(
-                                student["photo"],
-                                width=150
-                            )
-
-                        with c2:
-
-                            st.markdown(
-                                f"### {student['name']}"
-                            )
-
-                            st.write(
-                                f"**Roll Number:** {student['roll']}"
-                            )
-
-                            st.write(
-                                f"**Course:** {student['course']}"
-                            )
-
-                            st.write(
-                                f"**Semester:** {student['semester']}"
-                            )
-
-                            st.write(
-                                f"**Stream:** {student['stream']}"
-                            )
-
-                            st.write(
-                                f"**Section:** {student['section']}"
-                            )
-
-                            st.metric(
-                                "Search Score",
-                                score
-                            )
-
-                            st.caption(
-                                f"{color} {label}"
-                            )
-
-                    st.session_state.history.insert(
-                        0,
-                        {
-                            "type": "Search",
-                            "name": student["name"],
-                            "roll": student["roll"],
-                            "score": score,
-                        }
-                    )
-
-        if len(st.session_state.history) > 20:
-
-            st.session_state.history = (
-                st.session_state.history[:20]
-            )
-
-    except Exception as e:
-
-        with result_placeholder.container():
-
-            st.error(
-                f"Backend Error\n\n{e}"
-            )
-
-# ==========================================================
-# FACE RECOGNITION
-# ==========================================================
-
-if recognize_button:
-
-    if image is None:
-
-        with result_placeholder.container():
-
-            st.warning(
-                "Please upload or capture an image."
-            )
-
-    else:
-
-        try:
-
-            with st.spinner("Recognizing Student..."):
-
-                files = {
-                    "file": (
-                        "student.jpg",
-                        image.getvalue(),
-                        "image/jpeg"
-                    )
-                }
-
-                response = requests.post(
-                    f"{API_URL}/recognize",
-                    files=files,
-                    timeout=60
-                )
-
-                data = response.json()
-
-            with result_placeholder.container():
-
-                if not data["matched"]:
-
-                    st.error(
-                        data.get(
-                            "message",
-                            "Student Not Found"
-                        )
-                    )
-
-                else:
-
-                    student = data["student"]
-
-                    confidence = data["confidence"]
-
-                    st.success(
-                        "Student Successfully Recognized"
-                    )
-
-                    top_left, top_right = st.columns(
-                        [1, 2]
-                    )
-
-                    with top_left:
-
-                        st.image(
-                            student["photo"],
-                            width=220
-                        )
-
-                    with top_right:
-
-                        st.markdown(
-                            f"## {student['name']}"
-                        )
-
-                        st.write(
-                            f"**Roll Number:** {student['roll']}"
-                        )
-
-                        st.write(
-                            f"**Course:** {student['course']}"
-                        )
-
-                        st.write(
-                            f"**Semester:** {student['semester']}"
-                        )
-
-                        st.write(
-                            f"**Stream:** {student['stream']}"
-                        )
-
-                        st.write(
-                            f"**Section:** {student['section']}"
-                        )
-
-                    st.divider()
-
-                    st.subheader(
-                        "Recognition Confidence"
-                    )
-
-                    st.progress(
-                        min(confidence, 1.0)
-                    )
-
-                    st.metric(
-                        "Confidence",
-                        f"{confidence*100:.2f}%"
-                    )
-
-                    if confidence >= 0.90:
-
-                        st.success(
-                            "Very High Confidence Match"
-                        )
-
-                    elif confidence >= 0.75:
-
-                        st.info(
-                            "High Confidence Match"
-                        )
-
-                    elif confidence >= 0.60:
-
-                        st.warning(
-                            "Moderate Confidence Match"
-                        )
-
-                    else:
-
-                        st.error(
-                            "Low Confidence Match"
-                        )
-
-                    st.session_state.history.insert(
-                        0,
-                        {
-                            "type": "Recognition",
-                            "name": student["name"],
-                            "roll": student["roll"],
-                            "confidence": confidence,
-                        }
-                    )
-
-                    if len(st.session_state.history) > 20:
-
-                        st.session_state.history = (
-                            st.session_state.history[:20]
-                        )
-
-        except Exception as e:
-
-            with result_placeholder.container():
-
-                st.error(
-                    f"Recognition Failed\n\n{e}"
-                )
 
 # ==========================================================
 # SIDEBAR
 # ==========================================================
-
 with st.sidebar:
-
-    st.title("🎓 Student Recognition")
-
-    st.success("Backend Connected")
-
-    st.divider()
-
-    st.subheader("System")
-
-    st.metric(
-        "Recognition",
-        "InsightFace"
-    )
-
-    st.metric(
-        "Search",
-        "Weighted Search"
-    )
-
-    st.metric(
-        "API",
-        "Online"
-    )
-
+    st.title("🎓 System")
+    st.metric("Total Students", total_students())
+    st.metric("Engine", "InsightFace")
+    st.metric("Mode", "Local + Live")
     st.divider()
 
     st.subheader("Recent Activity")
-
-    if len(st.session_state.history) == 0:
-
-        st.info(
-            "No activity yet."
-        )
-
+    if not st.session_state.history:
+        st.info("No activity yet.")
     else:
-
-        for item in st.session_state.history:
-
+        for item in st.session_state.history[:12]:
             if item["type"] == "Recognition":
-
                 st.markdown(
-                    f"""
-### 👤 {item['name']}
-
-**Roll:** {item['roll']}
-
-Recognition
-
-Confidence:
-{item['confidence']*100:.2f}%
-
----
-"""
+                    f"**👤 {item['name']}**  \n"
+                    f"Roll: `{item['roll']}`  \n"
+                    f"Conf: {item['confidence']*100:.1f}%"
                 )
-
+            elif item["type"] == "Search":
+                st.markdown(
+                    f"**🔍 {item['name']}**  \n"
+                    f"Roll: `{item['roll']}`  \n"
+                    f"Score: {item['score']}"
+                )
             else:
-
                 st.markdown(
-                    f"""
-### 🔍 {item['name']}
-
-**Roll:** {item['roll']}
-
-Search Score:
-{item['score']}
-
----
-"""
+                    f"**📹 Live**  \n"
+                    f"{item.get('name', 'Unknown')}"
                 )
+            st.caption("---")
+
+# ==========================================================
+# TABS
+# ==========================================================
+tab_search, tab_upload, tab_live = st.tabs(
+    ["🔍 Smart Search", "📷 Upload / Camera", "📹 Live Camera"]
+)
+
+# ==========================================================
+# TAB 1 – SMART SEARCH
+# ==========================================================
+with tab_search:
+    st.subheader("Weighted Student Search")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        roll = st.text_input("Roll Number", key="s_roll")
+        name = st.text_input("Student Name", key="s_name")
+    with col2:
+        course = st.text_input("Course", key="s_course")
+        semester = st.text_input("Semester", key="s_sem")
+    with col3:
+        stream = st.text_input("Stream", key="s_stream")
+        section = st.text_input("Section", key="s_sec")
+
+    if st.button("Search Students", use_container_width=True, type="primary"):
+        filters = {
+            "roll": roll,
+            "name": name,
+            "course": course,
+            "semester": semester,
+            "stream": stream,
+            "section": section,
+        }
+
+        with st.spinner("Searching..."):
+            matches = search_best_matches(filters, limit=25)
+
+        if not matches:
+            st.warning("No students found matching the criteria.")
+        else:
+            st.success(f"Found {len(matches)} matching student(s)")
+
+            for student in matches:
+                score = student["score"]
+                if score >= 180:
+                    badge = "🟢 Excellent"
+                elif score >= 120:
+                    badge = "🟡 Good"
+                else:
+                    badge = "🟠 Possible"
+
+                with st.container(border=True):
+                    c1, c2 = st.columns([1, 2.5])
+                    with c1:
+                        if student.get("photo"):
+                            st.image(student["photo"], width=140)
+                        else:
+                            st.info("No photo")
+                    with c2:
+                        st.markdown(f"### {student['name']}")
+                        st.write(f"**Roll:** {student['roll']}")
+                        st.write(f"**Course:** {student['course']} | **Sem:** {student['semester']}")
+                        st.write(f"**Stream:** {student['stream']} | **Sec:** {student['section']}")
+                        st.metric("Search Score", score)
+                        st.caption(badge)
+
+                st.session_state.history.insert(0, {
+                    "type": "Search",
+                    "name": student["name"],
+                    "roll": student["roll"],
+                    "score": score,
+                })
+
+            st.session_state.history = st.session_state.history[:20]
+
+# ==========================================================
+# TAB 2 – UPLOAD / SINGLE PHOTO
+# ==========================================================
+with tab_upload:
+    st.subheader("Recognize from Image")
+
+    uploaded = st.file_uploader("Upload student photo", type=["jpg", "jpeg", "png"])
+    camera = st.camera_input("Or take a photo")
+
+    image_bytes = None
+    if uploaded:
+        image_bytes = uploaded.getvalue()
+        st.image(uploaded, use_container_width=True)
+    elif camera:
+        image_bytes = camera.getvalue()
+        st.image(camera, use_container_width=True)
+
+    if st.button("Recognize Student", use_container_width=True, type="primary"):
+        if image_bytes is None:
+            st.warning("Please upload or capture an image first.")
+        else:
+            with st.spinner("Recognizing..."):
+                nparr = np.frombuffer(image_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                if img is None:
+                    st.error("Could not decode image.")
+                else:
+                    results = recognize_frame(img)
+
+                    if not results:
+                        st.error("No face detected.")
+                    else:
+                        best = max(results, key=lambda r: r["confidence"])
+
+                        if not best["matched"]:
+                            st.error(f"Unknown person (confidence: {best['confidence']*100:.1f}%)")
+                        else:
+                            st.success("Student Recognized")
+                            c1, c2 = st.columns([1, 2])
+                            with c1:
+                                if best.get("photo"):
+                                    st.image(best["photo"], width=200)
+                            with c2:
+                                st.markdown(f"## {best['name']}")
+                                st.write(f"**Roll:** {best['roll']}")
+                                st.write(f"**Course:** {best['course']}")
+                                st.write(f"**Semester:** {best['semester']}")
+                                st.write(f"**Stream:** {best['stream']}")
+                                st.write(f"**Section:** {best['section']}")
+
+                            conf = best["confidence"]
+                            st.progress(min(conf, 1.0))
+                            st.metric("Confidence", f"{conf*100:.2f}%")
+
+                            if conf >= 0.90:
+                                st.success("Very High Confidence")
+                            elif conf >= 0.75:
+                                st.info("High Confidence")
+                            elif conf >= 0.60:
+                                st.warning("Moderate Confidence")
+                            else:
+                                st.error("Low Confidence")
+
+                            st.session_state.history.insert(0, {
+                                "type": "Recognition",
+                                "name": best["name"],
+                                "roll": best["roll"],
+                                "confidence": conf,
+                            })
+                            st.session_state.history = st.session_state.history[:20]
+
+# ==========================================================
+# TAB 3 – LIVE CAMERA
+# ==========================================================
+with tab_live:
+    st.subheader("Live Face Recognition")
+    st.caption("Uses your webcam in real time. Green = known student, Red = unknown.")
+
+    rtc_config = RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )
+
+    ctx = webrtc_streamer(
+        key="live-recognition",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=rtc_config,
+        video_processor_factory=FaceRecognitionProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
+
+    if ctx.video_processor:
+        results = ctx.video_processor.latest_results
+
+        if results:
+            st.markdown("### Current Detections")
+            for r in results:
+                if r["matched"]:
+                    st.success(
+                        f"**{r['name']}** | {r['stream']} | "
+                        f"Conf: {r['confidence']*100:.1f}%"
+                    )
+                    if r["confidence"] > 0.70:
+                        st.session_state.history.insert(0, {
+                            "type": "Live",
+                            "name": r["name"],
+                            "roll": r.get("roll", ""),
+                            "confidence": r["confidence"],
+                        })
+                        st.session_state.history = st.session_state.history[:20]
+                else:
+                    st.error(f"Unknown | Conf: {r['confidence']*100:.1f}%")
+        else:
+            st.info("Point the camera at a face…")
 
 # ==========================================================
 # FOOTER
 # ==========================================================
-
 st.divider()
-
-left, center, right = st.columns(3)
-
-with left:
-
-    st.caption(
-        "Frontend : Streamlit"
-    )
-
-with center:
-
-    st.caption(
-        "Backend : FastAPI"
-    )
-
-with right:
-
-    st.caption(
-        "Recognition : InsightFace"
-    )
-
-st.markdown(
-    """
-<div style='text-align:center;
-padding:15px;
-color:#94a3b8;'>
-
-Illegal As Fuck
-
-Powered by InsightFace, FastAPI and Streamlit
-
-</div>
-""",
-    unsafe_allow_html=True,
-)
+st.caption("Frontend: Streamlit + streamlit-webrtc  |  Backend: InsightFace + process_frame()")
