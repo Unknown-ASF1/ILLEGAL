@@ -8,7 +8,7 @@ import requests
 API_URL = "https://florence-leasing-correspondence-mental.trycloudflare.com"
 
 st.set_page_config(
-    page_title="Student Recognition System",
+    page_title="Illegal As Fuck",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -83,7 +83,7 @@ html, body, [class*="css"]{
 # ==========================================================
 
 st.markdown(
-    "<div class='big-title'>🎓 Student Recognition System</div>",
+    "<div class='big-title'>🎓 Illegal As Fuck</div>",
     unsafe_allow_html=True
 )
 
@@ -584,7 +584,7 @@ st.markdown(
 padding:15px;
 color:#94a3b8;'>
 
-Student Recognition System
+Illegal As Fuck
 
 Powered by InsightFace, FastAPI and Streamlit
 
