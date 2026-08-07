@@ -10,7 +10,7 @@ if "history" not in st.session_state:
 # CONFIG
 # ==============================
 
-API_URL = "https://superintendent-requirements-radar-focused.trycloudflare.com "
+API_URL = "https://superintendent-requirements-radar-focused.trycloudflare.com"
 
 st.set_page_config(
     page_title="Illegas AS Fuck",
