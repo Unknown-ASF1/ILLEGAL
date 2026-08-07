@@ -9,8 +9,7 @@ from Backend.face_engine import get_faces
 from Backend.recognizer import recognize
 from Backend.database import (
     get_student,
-    search_student,
-    search_students
+    search_best_matches,
 )
 
 # ==========================================================
@@ -38,8 +37,13 @@ app.add_middleware(
 # ==========================================================
 
 class SearchRequest(BaseModel):
-    field: str
-    value: str
+
+    roll: str = ""
+    name: str = ""
+    course: str = ""
+    semester: str = ""
+    stream: str = ""
+    section: str = ""
 
 # ==========================================================
 # HOME
@@ -95,14 +99,12 @@ async def recognize_student(
         face = max(
             faces,
             key=lambda x:
-            (x.bbox[2]-x.bbox[0]) *
-            (x.bbox[3]-x.bbox[1])
+            (x.bbox[2] - x.bbox[0]) *
+            (x.bbox[3] - x.bbox[1])
         )
 
-        embedding = face.embedding
-
         student_index, confidence = recognize(
-            embedding
+            face.embedding
         )
 
         if student_index is None:
@@ -112,9 +114,7 @@ async def recognize_student(
                 "message": "Student Not Found"
             }
 
-        student = get_student(
-            student_index
-        )
+        student = get_student(student_index)
 
         return {
 
@@ -139,69 +139,74 @@ async def recognize_student(
 
         }
 
+
 # ==========================================================
-# SEARCH STUDENT
+# MULTI-FIELD SEARCH
 # ==========================================================
 
 @app.post("/search")
-def search(request: SearchRequest):
+def search_students(request: SearchRequest):
 
     try:
 
-        field = request.field
+        filters = {
+            "roll": request.roll,
+            "name": request.name,
+            "course": request.course,
+            "semester": request.semester,
+            "stream": request.stream,
+            "section": request.section,
+        }
 
-        value = request.value
+        # Check if every field is empty
 
-        # Roll Number should return exactly one student
-
-        if field == "Roll No":
-
-            student = search_student(
-                field,
-                value
-            )
-
-            if student is None:
-
-                return {
-
-                    "found": False,
-
-                    "message": "Student Not Found"
-
-                }
+        if not any(
+            str(value).strip()
+            for value in filters.values()
+        ):
 
             return {
-
-                "found": True,
-
-                "student": student
-
+                "found": False,
+                "count": 0,
+                "message": "Please enter at least one search field.",
+                "students": []
             }
 
-        # Other fields may have multiple students
+        students = search_best_matches(filters)
 
-        students = search_students(
-            field,
-            value
-        )
+        if len(students) == 0:
+
+            return {
+                "found": False,
+                "count": 0,
+                "message": "No matching students found.",
+                "students": []
+            }
 
         return {
-
-            "found": len(students) > 0,
-
+            "found": True,
             "count": len(students),
-
             "students": students
-
         }
 
     except Exception as e:
 
         return {
-
             "found": False,
-
-            "message": str(e)
-
+            "count": 0,
+            "message": str(e),
+            "students": []
         }
+
+
+# ==========================================================
+# HEALTH CHECK
+# ==========================================================
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "online",
+        "service": "Student Recognition API"
+    }

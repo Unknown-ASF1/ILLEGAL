@@ -1,207 +1,265 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pathlib import Path
+from typing import Dict, List
 
-import cv2
-import numpy as np
-
-from Backend.face_engine import get_faces
-from Backend.recognizer import recognize
-from Backend.database import (
-    get_student,
-    search_student,
-    search_students
-)
+import pandas as pd
 
 # ==========================================================
-# APP
+# LOAD STUDENT DATABASE
 # ==========================================================
 
-app = FastAPI(
-    title="Student Recognition API"
-)
+BASE_DIR = Path(__file__).resolve().parent
+
+CSV_PATH = BASE_DIR.parent / "data" / "students.csv"
+
+students = pd.read_csv(CSV_PATH)
 
 # ==========================================================
-# CORS
+# COLUMN MAP
 # ==========================================================
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+COLUMN_MAP = {
+    "roll": "Roll No.",
+    "name": "Student Name",
+    "course": "Course",
+    "semester": "Semester",
+    "stream": "Stream",
+    "section": "Section",
+}
 
 # ==========================================================
-# SEARCH MODEL
+# SEARCH WEIGHTS
 # ==========================================================
 
-class SearchRequest(BaseModel):
-    field: str
-    value: str
+SEARCH_WEIGHTS = {
+    "roll": 100,
+    "name": 50,
+    "course": 20,
+    "semester": 15,
+    "stream": 15,
+    "section": 10,
+}
 
 # ==========================================================
-# HOME
+# RETURN STUDENT BY INDEX
 # ==========================================================
 
-@app.get("/")
-def home():
+def get_student(index: int) -> Dict:
+
+    row = students.iloc[index]
 
     return {
-        "status": "running",
-        "message": "Student Recognition API"
+        "name": row["Student Name"],
+        "roll": row["Roll No."],
+        "course": row["Course"],
+        "semester": row["Semester"],
+        "stream": row["Stream"],
+        "section": row["Section"],
+        "photo": row["Photo"],
     }
 
+
 # ==========================================================
-# FACE RECOGNITION
+# CLEAN VALUE
 # ==========================================================
 
-@app.post("/recognize")
-async def recognize_student(
-    file: UploadFile = File(...)
+def normalize(value):
+
+    if pd.isna(value):
+        return ""
+
+    return str(value).strip().lower()
+
+
+# ==========================================================
+# SCORE A SINGLE FIELD
+# ==========================================================
+
+def score_field(
+    query: str,
+    candidate: str,
+    weight: int,
+    exact_only: bool = False,
 ):
 
-    try:
+    query = normalize(query)
+    candidate = normalize(candidate)
 
-        contents = await file.read()
+    if query == "":
+        return 0
 
-        image = np.frombuffer(
-            contents,
-            np.uint8
-        )
+    if exact_only:
 
-        image = cv2.imdecode(
-            image,
-            cv2.IMREAD_COLOR
-        )
+        if query == candidate:
+            return weight
 
-        if image is None:
+        return 0
 
-            return {
-                "matched": False,
-                "message": "Invalid Image"
-            }
+    # Exact match
 
-        faces = get_faces(image)
+    if query == candidate:
+        return weight
 
-        if len(faces) == 0:
+    # Starts with
 
-            return {
-                "matched": False,
-                "message": "No Face Found"
-            }
+    if candidate.startswith(query):
+        return int(weight * 0.90)
 
-        face = max(
-            faces,
-            key=lambda x:
-            (x.bbox[2]-x.bbox[0]) *
-            (x.bbox[3]-x.bbox[1])
-        )
+    # Partial match
 
-        embedding = face.embedding
+    if query in candidate:
+        return int(weight * 0.75)
 
-        student_index, confidence = recognize(
-            embedding
-        )
+    return 0
 
-        if student_index is None:
-
-            return {
-                "matched": False,
-                "message": "Student Not Found"
-            }
-
-        student = get_student(
-            student_index
-        )
-
-        return {
-
-            "matched": True,
-
-            "confidence": round(
-                confidence,
-                4
-            ),
-
-            "student": student
-
-        }
-
-    except Exception as e:
-
-        return {
-
-            "matched": False,
-
-            "message": str(e)
-
-        }
 
 # ==========================================================
-# SEARCH STUDENT
+# SCORE STUDENT
 # ==========================================================
 
-@app.post("/search")
-def search(request: SearchRequest):
+def score_student(
+    row,
+    filters: Dict,
+):
 
-    try:
+    score = 0
 
-        field = request.field
+    score += score_field(
+        filters.get("roll", ""),
+        row["Roll No."],
+        SEARCH_WEIGHTS["roll"],
+        exact_only=True,
+    )
 
-        value = request.value
+    score += score_field(
+        filters.get("name", ""),
+        row["Student Name"],
+        SEARCH_WEIGHTS["name"],
+    )
 
-        # Roll Number should return exactly one student
+    score += score_field(
+        filters.get("course", ""),
+        row["Course"],
+        SEARCH_WEIGHTS["course"],
+    )
 
-        if field == "Roll No":
+    score += score_field(
+        filters.get("semester", ""),
+        row["Semester"],
+        SEARCH_WEIGHTS["semester"],
+        exact_only=True,
+    )
 
-            student = search_student(
-                field,
-                value
-            )
+    score += score_field(
+        filters.get("stream", ""),
+        row["Stream"],
+        SEARCH_WEIGHTS["stream"],
+    )
 
-            if student is None:
+    score += score_field(
+        filters.get("section", ""),
+        row["Section"],
+        SEARCH_WEIGHTS["section"],
+        exact_only=True,
+    )
 
-                return {
+    return score
 
-                    "found": False,
 
-                    "message": "Student Not Found"
 
-                }
+# ==========================================================
+# SEARCH BEST MATCHES
+# ==========================================================
 
-            return {
+def search_best_matches(
+    filters: Dict,
+    limit: int = 20,
+) -> List[Dict]:
 
-                "found": True,
+    results = []
 
-                "student": student
+    # Normalize filters once
+    cleaned_filters = {
+        key: normalize(value)
+        for key, value in filters.items()
+    }
 
-            }
+    for _, row in students.iterrows():
 
-        # Other fields may have multiple students
-
-        students = search_students(
-            field,
-            value
+        score = score_student(
+            row,
+            cleaned_filters,
         )
 
-        return {
+        if score == 0:
+            continue
 
-            "found": len(students) > 0,
+        results.append(
+            {
+                "score": score,
+                "name": row["Student Name"],
+                "roll": row["Roll No."],
+                "course": row["Course"],
+                "semester": row["Semester"],
+                "stream": row["Stream"],
+                "section": row["Section"],
+                "photo": row["Photo"],
+            }
+        )
 
-            "count": len(students),
+    results.sort(
+        key=lambda x: (
+            x["score"],
+            x["name"]
+        ),
+        reverse=True,
+    )
 
-            "students": students
+    return results[:limit]
 
-        }
 
-    except Exception as e:
+# ==========================================================
+# SEARCH STATISTICS (OPTIONAL)
+# ==========================================================
 
-        return {
+def total_students():
 
-            "found": False,
+    return len(students)
 
-            "message": str(e)
 
-        }
+def total_matches(filters: Dict):
+
+    return len(
+        search_best_matches(
+            filters,
+            limit=len(students),
+        )
+    )
+
+
+# ==========================================================
+# TEST
+# ==========================================================
+
+if __name__ == "__main__":
+
+    filters = {
+        "roll": "",
+        "name": "rahul",
+        "course": "",
+        "semester": "",
+        "stream": "",
+        "section": "",
+    }
+
+    matches = search_best_matches(filters)
+
+    print(f"\nFound {len(matches)} students\n")
+
+    for student in matches:
+
+        print(
+            f"{student['score']:>3} | "
+            f"{student['name']} | "
+            f"{student['roll']}"
+        )
+
