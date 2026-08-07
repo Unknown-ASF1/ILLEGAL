@@ -4,23 +4,15 @@ import cv2
 import numpy as np
 import sys
 from pathlib import Path
-from typing import Dict, List
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
-import av
 
-# ----------------------------------------------------------
-# PATH SETUP
-# ----------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from Backend.live_recognition import  recognize_frame #draw_results process_frame,
-from Backend.database import search_best_matches,  total_students #get_student
-# from live_camera import FaceRecognitionProcessor
+from Backend.live_recognition import recognize_frame
+from Backend.database import search_best_matches, total_students
+from live_camera import FaceRecognitionProcessor
 
-# ==========================================================
-# PAGE CONFIG
-# ==========================================================
 st.set_page_config(
     page_title="Illegal As Fuck | Student Recognition",
     page_icon="🎓",
@@ -28,15 +20,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ==========================================================
-# SESSION STATE
-# ==========================================================
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# ==========================================================
-# CUSTOM CSS
-# ==========================================================
 st.markdown("""
 <style>
 html, body, [class*="css"] {
@@ -73,9 +59,6 @@ h1, h2, h3, h4 { color: #f8fafc !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================================
-# HEADER
-# ==========================================================
 st.markdown('<div class="big-title">🎓 Illegal As Fuck</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="subtitle">Face Recognition • Smart Search • Live Camera</div>',
@@ -83,13 +66,9 @@ st.markdown(
 )
 st.divider()
 
-# ==========================================================
-# SIDEBAR
-# ==========================================================
 with st.sidebar:
     st.title("🎓 System")
 
-    # ---------- Backend Status ----------
     try:
         total = total_students()
         from Backend.recognizer import EMBEDDINGS
@@ -136,9 +115,6 @@ with st.sidebar:
                 )
             st.caption("---")
 
-# ==========================================================
-# TABS
-# ==========================================================
 tab_search, tab_upload, tab_live = st.tabs(
     ["🔍 Smart Search", "📷 Upload / Camera", "📹 Live Camera"]
 )
@@ -283,61 +259,58 @@ with tab_upload:
                             })
                             st.session_state.history = st.session_state.history[:20]
 
-# # ==========================================================
-# # TAB 3 – LIVE CAMERA
-# # ==========================================================
-# with tab_live:
-#     st.subheader("Live Face Recognition")
-#     st.caption("Green = known student • Red = unknown • Shows Name + Stream + Semester")
-
-#     rtc_config = RTCConfiguration(
-#         {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-#     )
-
-#     ctx = webrtc_streamer(
-#         key="live-recognition",
-#         mode=WebRtcMode.SENDRECV,
-#         rtc_configuration=rtc_config,
-#         video_processor_factory=FaceRecognitionProcessor,
-#         media_stream_constraints={
-#             "video": {
-#                 "width": {"ideal": 640},
-#                 "height": {"ideal": 480},
-#                 "frameRate": {"ideal": 24}
-#             },
-#             "audio": False
-#         },
-#         async_processing=True,
-#     )
-
-#     if ctx.video_processor:
-#         results = ctx.video_processor.latest_results
-
-#         if results:
-#             st.markdown("### Current Detections")
-#             for r in results:
-#                 if r["matched"]:
-#                     semester = r.get("semester", "")
-#                     st.success(
-#                         f"**{r['name']}**  \n"
-#                         f"{r.get('stream', '')}  |  Sem {semester}  \n"
-#                         f"Confidence: {r['confidence']*100:.1f}%"
-#                     )
-#                     if r["confidence"] > 0.70:
-#                         st.session_state.history.insert(0, {
-#                             "type": "Live",
-#                             "name": r["name"],
-#                             "roll": r.get("roll", ""),
-#                             "confidence": r["confidence"],
-#                         })
-#                         st.session_state.history = st.session_state.history[:20]
-#                 else:
-#                     st.error(f"Unknown  |  Conf: {r['confidence']*100:.1f}%")
-#         else:
-#             st.info("Point the camera at a face…")
-
 # ==========================================================
-# FOOTER
+# TAB 3 – LIVE CAMERA
 # ==========================================================
+with tab_live:
+    st.subheader("Live Face Recognition")
+    st.caption("Green = known student • Red = unknown • Shows Name + Stream + Semester")
+
+    rtc_config = RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )
+
+    ctx = webrtc_streamer(
+        key="live-recognition",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=rtc_config,
+        video_processor_factory=FaceRecognitionProcessor,
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": 640},
+                "height": {"ideal": 480},
+                "frameRate": {"ideal": 24}
+            },
+            "audio": False
+        },
+        async_processing=True,
+    )
+
+    if ctx.video_processor:
+        results = ctx.video_processor.latest_results
+
+        if results:
+            st.markdown("### Current Detections")
+            for r in results:
+                if r.get("matched"):
+                    semester = r.get("semester", "")
+                    st.success(
+                        f"**{r['name']}**  \n"
+                        f"{r.get('stream', '')}  |  Sem {semester}  \n"
+                        f"Confidence: {r['confidence']*100:.1f}%"
+                    )
+                    if r["confidence"] > 0.70:
+                        st.session_state.history.insert(0, {
+                            "type": "Live",
+                            "name": r["name"],
+                            "roll": r.get("roll", ""),
+                            "confidence": r["confidence"],
+                        })
+                        st.session_state.history = st.session_state.history[:20]
+                else:
+                    st.error(f"Unknown  |  Conf: {r['confidence']*100:.1f}%")
+        else:
+            st.info("Point the camera at a face…")
+
 st.divider()
 st.caption("Frontend: Streamlit + streamlit-webrtc  |  Backend: InsightFace + process_frame()")
