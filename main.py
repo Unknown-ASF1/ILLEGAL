@@ -1,15 +1,28 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 import cv2
 import numpy as np
 
 from Backend.face_engine import get_faces
 from Backend.recognizer import recognize
-from Backend.database import get_student
-from fastapi.middleware.cors import CORSMiddleware
+from Backend.database import (
+    get_student,
+    search_best_matches,
+)
 
-app = FastAPI(title="Student Recognition API")
+# ==========================================================
+# APP
+# ==========================================================
+
+app = FastAPI(
+    title="Student Recognition API"
+)
+
+# ==========================================================
+# CORS
+# ==========================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,74 +32,180 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Allow Streamlit to communicate with FastAPI
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ==========================================================
+# SEARCH MODEL
+# ==========================================================
 
+class SearchRequest(BaseModel):
+
+    roll: str = ""
+    name: str = ""
+    course: str = ""
+    semester: str = ""
+    stream: str = ""
+    section: str = ""
+
+# ==========================================================
+# HOME
+# ==========================================================
 
 @app.get("/")
 def home():
+
     return {
         "status": "running",
         "message": "Student Recognition API"
     }
 
+# ==========================================================
+# FACE RECOGNITION
+# ==========================================================
 
 @app.post("/recognize")
-async def recognize_student(file: UploadFile = File(...)):
+async def recognize_student(
+    file: UploadFile = File(...)
+):
 
-    # Read uploaded image
-    contents = await file.read()
+    try:
 
-    image = np.frombuffer(contents, np.uint8)
+        contents = await file.read()
 
-    image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+        image = np.frombuffer(
+            contents,
+            np.uint8
+        )
 
-    if image is None:
+        image = cv2.imdecode(
+            image,
+            cv2.IMREAD_COLOR
+        )
+
+        if image is None:
+
+            return {
+                "matched": False,
+                "message": "Invalid Image"
+            }
+
+        faces = get_faces(image)
+
+        if len(faces) == 0:
+
+            return {
+                "matched": False,
+                "message": "No Face Found"
+            }
+
+        face = max(
+            faces,
+            key=lambda x:
+            (x.bbox[2] - x.bbox[0]) *
+            (x.bbox[3] - x.bbox[1])
+        )
+
+        student_index, confidence = recognize(
+            face.embedding
+        )
+
+        if student_index is None:
+
+            return {
+                "matched": False,
+                "message": "Student Not Found"
+            }
+
+        student = get_student(student_index)
+
         return {
+
+            "matched": True,
+
+            "confidence": round(
+                confidence,
+                4
+            ),
+
+            "student": student
+
+        }
+
+    except Exception as e:
+
+        return {
+
             "matched": False,
-            "message": "Invalid image."
+
+            "message": str(e)
+
         }
 
-    # Detect faces
-    faces = get_faces(image)
+# ==========================================================
+# MULTI-FIELD SEARCH
+# ==========================================================
 
-    faces = sorted(
-    faces,
-    key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]),
-    reverse=True
-)
+@app.post("/search")
+def search_students(request: SearchRequest):
 
-    if len(faces) == 0:
+    try:
+
+        filters = {
+            "roll": request.roll,
+            "name": request.name,
+            "course": request.course,
+            "semester": request.semester,
+            "stream": request.stream,
+            "section": request.section,
+        }
+
+        # Check if every field is empty
+
+        if not any(
+            str(value).strip()
+            for value in filters.values()
+        ):
+
+            return {
+                "found": False,
+                "count": 0,
+                "message": "Please enter at least one search field.",
+                "students": []
+            }
+
+        students = search_best_matches(filters)
+
+        if len(students) == 0:
+
+            return {
+                "found": False,
+                "count": 0,
+                "message": "No matching students found.",
+                "students": []
+            }
+
         return {
-            "matched": False,
-            "message": "No face detected."
+            "found": True,
+            "count": len(students),
+            "students": students
         }
 
-    # Use the largest detected face
-    face = max(
-        faces,
-        key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1])
-    )
+    except Exception as e:
 
-    embedding = face.embedding
-
-    student_index, confidence = recognize(embedding)
-
-    if student_index is None:
         return {
-            "matched": False
+            "found": False,
+            "count": 0,
+            "message": str(e),
+            "students": []
         }
 
-    student = get_student(student_index)
+
+# ==========================================================
+# HEALTH CHECK
+# ==========================================================
+
+@app.get("/health")
+def health():
 
     return {
-        "matched": True,
-        "confidence": round(confidence, 4),
-        "student": student
+        "status": "online",
+        "service": "Student Recognition API"
     }
