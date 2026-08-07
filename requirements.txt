@@ -1,17 +1,10 @@
-fastapi
-uvicorn
-
-numpy==1.26.4
+cat > requirements.txt << 'EOF'
+streamlit
+opencv-python-headless==4.8.1.78
+numpy
 pandas
-
-opencv-python-headless==4.10.0.84
-
-insightface==0.7.3
-
-onnx==1.17.0
-onnxruntime==1.22.0
-ml-dtypes==0.3.2
-
-faiss-cpu
+pillow
 requests
-python-multipart
+insightface==0.7.3
+onnxruntime==1.16.3
+EOF
