@@ -9,14 +9,14 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 import av
 
 # ----------------------------------------------------------
-# PATH SETUP (critical)
+# PATH SETUP
 # ----------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from Backend.live_recognition import process_frame, recognize_frame, draw_results
 from Backend.database import search_best_matches, get_student, total_students
-from live_camera import FaceRecognitionProcessor   # same folder
+from live_camera import FaceRecognitionProcessor
 
 # ==========================================================
 # PAGE CONFIG
@@ -88,7 +88,26 @@ st.divider()
 # ==========================================================
 with st.sidebar:
     st.title("🎓 System")
-    st.metric("Total Students", total_students())
+
+    # ---------- Backend Status ----------
+    try:
+        total = total_students()
+        from Backend.recognizer import EMBEDDINGS
+        embeddings_count = len(EMBEDDINGS)
+        backend_ok = True
+    except Exception:
+        total = 0
+        embeddings_count = 0
+        backend_ok = False
+
+    if backend_ok and embeddings_count > 0:
+        st.success("✅ Backend Online")
+        st.caption(f"Embeddings loaded: {embeddings_count}")
+    else:
+        st.error("❌ Backend Offline / Error")
+        st.caption("Check Backend folder & embeddings.pkl")
+
+    st.metric("Total Students", total if backend_ok else "—")
     st.metric("Engine", "InsightFace")
     st.metric("Mode", "Local + Live")
     st.divider()
@@ -269,7 +288,7 @@ with tab_upload:
 # ==========================================================
 with tab_live:
     st.subheader("Live Face Recognition")
-    st.caption("Uses your webcam in real time. Green = known student, Red = unknown.")
+    st.caption("Green = known student • Red = unknown • Shows Name + Stream + Semester")
 
     rtc_config = RTCConfiguration(
         {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
@@ -280,7 +299,14 @@ with tab_live:
         mode=WebRtcMode.SENDRECV,
         rtc_configuration=rtc_config,
         video_processor_factory=FaceRecognitionProcessor,
-        media_stream_constraints={"video": True, "audio": False},
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": 640},
+                "height": {"ideal": 480},
+                "frameRate": {"ideal": 24}
+            },
+            "audio": False
+        },
         async_processing=True,
     )
 
@@ -291,9 +317,11 @@ with tab_live:
             st.markdown("### Current Detections")
             for r in results:
                 if r["matched"]:
+                    semester = r.get("semester", "")
                     st.success(
-                        f"**{r['name']}** | {r['stream']} | "
-                        f"Conf: {r['confidence']*100:.1f}%"
+                        f"**{r['name']}**  \n"
+                        f"{r.get('stream', '')}  |  Sem {semester}  \n"
+                        f"Confidence: {r['confidence']*100:.1f}%"
                     )
                     if r["confidence"] > 0.70:
                         st.session_state.history.insert(0, {
@@ -304,7 +332,7 @@ with tab_live:
                         })
                         st.session_state.history = st.session_state.history[:20]
                 else:
-                    st.error(f"Unknown | Conf: {r['confidence']*100:.1f}%")
+                    st.error(f"Unknown  |  Conf: {r['confidence']*100:.1f}%")
         else:
             st.info("Point the camera at a face…")
 
