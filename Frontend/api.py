@@ -1,6 +1,6 @@
 import requests
 
-API_URL = "https://florence-leasing-correspondence-mental.trycloudflare.com"
+API_URL = "https://127.0.0.1:8000"
 
 
 def recognize(image_bytes: bytes):
